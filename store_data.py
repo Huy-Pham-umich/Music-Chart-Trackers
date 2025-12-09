@@ -3,8 +3,7 @@ import requests
 
 DB_NAME = "final_project.db"
 
-# Your Genius access token
-GENIUS_ACCESS_TOKEN = "J2Z_IIvWZ0aF6Czx8FRUAnRXofz_GaTMh66z8xB9j56z-1lmCRQuyM4XZVWTmIq6"
+LASTFM_API_KEY = "147d088f8a1a28a41085abb802b8d9dc"
 
 
 def get_connection():
@@ -14,116 +13,107 @@ def get_connection():
 
 
 def create_tables(cur):
-    # One table, one row per Genius artist
+    """
+    Create the LastfmTopArtists table.
+    artist_id is an integer key.
+    artist_name is UNIQUE so we never store the same string twice.
+    """
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS GeniusArtists (
-            genius_artist_id INTEGER PRIMARY KEY,
-            artist_name TEXT,
+        CREATE TABLE IF NOT EXISTS LastfmTopArtists (
+            artist_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artist_name TEXT UNIQUE,
+            listeners INTEGER,
+            playcount INTEGER,
             rank INTEGER
         )
     """)
 
 
-def fetch_genius_artists():
+def fetch_lastfm_top_artists():
     """
-    Use the Genius search API to find artist IDs for a ranked list
-    of top 100 artists of all time.
+    Call Last.fm chart.getTopArtists and get up to 100 artists.
+    We rely on the list order for rank (index + 1).
+    """
 
-    Fill ARTIST_NAMES with the real 100 names in order.
-    """
-    ARTIST_NAMES = [
-        # TODO: replace with the actual 100 names from Genius, in order
-        "The Beatles",
-        "Michael Jackson",
-        "Madonna",
-        "Elvis Presley",
-        "Taylor Swift",
-        # ...
-    ]
+    base_url = "https://ws.audioscrobbler.com/2.0/"
+    url = (base_url +
+           "?method=chart.gettopartists" +
+           "&api_key=" + LASTFM_API_KEY +
+           "&limit=100" +
+           "&format=json")
+
+    response = requests.get(url)
+    data = response.json()
+
+    artists_block = data["artists"]
+    artist_list = artists_block["artist"]
 
     results = []
-    base_url = "https://api.genius.com/search"
 
-    for rank_index in range(len(ARTIST_NAMES)):
-        name = ARTIST_NAMES[rank_index]
+    # Walk through the list; index gives us rank.
+    for i in range(len(artist_list)):
+        artist = artist_list[i]
 
-        # Simple URL encoding: replace spaces with %20
-        query = name.replace(" ", "%20")
+        name = artist["name"]
+        listeners_str = artist["listeners"]
+        playcount_str = artist["playcount"]
 
-        url = (base_url +
-               "?q=" + query +
-               "&access_token=" + GENIUS_ACCESS_TOKEN)
-
-        response = requests.get(url)
-        data = response.json()
-
-        # Walk the JSON using direct indexes/keys
-        if "response" not in data:
-            continue
-
-        response_block = data["response"]
-        hits = response_block["hits"]
-
-        if len(hits) == 0:
-            continue
-
-        first_hit = hits[0]
-        result_block = first_hit["result"]
-        primary_artist = result_block["primary_artist"]
-
-        artist_id = primary_artist["id"]
-        artist_name = primary_artist["name"]
+        # Rank is list position (1-based)
+        rank_value = i + 1
 
         artist_dict = {}
-        artist_dict["genius_artist_id"] = artist_id
-        artist_dict["artist_name"] = artist_name
-        artist_dict["rank"] = rank_index + 1
+        artist_dict["artist_name"] = name
+        artist_dict["listeners"] = int(listeners_str)
+        artist_dict["playcount"] = int(playcount_str)
+        artist_dict["rank"] = rank_value
 
         results.append(artist_dict)
 
     return results
 
 
-def store_genius_data(conn, cur):
+def store_lastfm_data(conn, cur):
     """
-    Insert up to 25 new Genius artists per run.
-    Avoid duplicates with genius_artist_id.
-    Stop once there are 100 rows.
+    Insert up to 25 new artists per run.
+    Avoid duplicates by checking artist_name (UNIQUE).
+    Stop once we reach 100 rows total.
     """
 
-    cur.execute("SELECT COUNT(*) FROM GeniusArtists")
+    # Count existing rows
+    cur.execute("SELECT COUNT(*) FROM LastfmTopArtists")
     row = cur.fetchone()
     current_count = row[0]
 
     if current_count >= 100:
-        print("Already have 100 Genius artists. Skipping insert.")
+        print("Already have 100 Last.fm artists. Skipping insert.")
         return
 
     max_new_this_run = 100 - current_count
     if max_new_this_run > 25:
         max_new_this_run = 25
 
-    artists = fetch_genius_artists()
+    artists = fetch_lastfm_top_artists()
     inserted = 0
 
     for artist in artists:
-        artist_id = artist["genius_artist_id"]
-        artist_name = artist["artist_name"]
+        name = artist["artist_name"]
+        listeners = artist["listeners"]
+        playcount = artist["playcount"]
         rank = artist["rank"]
 
-        # Check for duplicates
+        # Check if this artist_name is already stored
         cur.execute(
-            "SELECT 1 FROM GeniusArtists WHERE genius_artist_id = ?",
-            (artist_id,)
+            "SELECT 1 FROM LastfmTopArtists WHERE artist_name = ?",
+            (name,)
         )
         exists = cur.fetchone()
         if exists is not None:
             continue
 
         cur.execute(
-            "INSERT INTO GeniusArtists (genius_artist_id, artist_name, rank) "
-            "VALUES (?, ?, ?)",
-            (artist_id, artist_name, rank)
+            "INSERT INTO LastfmTopArtists (artist_name, listeners, playcount, rank) "
+            "VALUES (?, ?, ?, ?)",
+            (name, listeners, playcount, rank)
         )
 
         inserted = inserted + 1
@@ -131,15 +121,16 @@ def store_genius_data(conn, cur):
             break
 
     conn.commit()
-    print("Inserted " + str(inserted) + " new Genius artists.")
+    print("Inserted " + str(inserted) + " new Last.fm artists.")
 
 
 def main():
     conn, cur = get_connection()
     create_tables(cur)
-    store_genius_data(conn, cur)
+    store_lastfm_data(conn, cur)
     conn.close()
 
 
 if __name__ == "__main__":
     main()
+
