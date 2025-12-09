@@ -1,8 +1,7 @@
-# analyze_data.py
 import sqlite3
 import matplotlib.pyplot as plt
 
-DB_NAME = "final_project.db"
+DB_NAME = "lastfm_data.db"
 
 
 def get_connection():
@@ -14,6 +13,7 @@ def get_connection():
 def get_lastfm_top_artists(cur):
     """
     Get up to 100 artists ordered by rank.
+    Returns a list of (artist_name, listeners, playcount, rank).
     """
     cur.execute("""
         SELECT artist_name, listeners, playcount, rank
@@ -22,7 +22,7 @@ def get_lastfm_top_artists(cur):
         LIMIT 100
     """)
     rows = cur.fetchall()
-    return rows  # list of (artist_name, listeners, playcount, rank)
+    return rows
 
 
 def get_bucket_label(rank):
@@ -93,7 +93,7 @@ def write_bucket_results_to_file(bucket_avgs, bucket_counts,
         f.write("Bucket\tArtists\tAvg Plays per Listener\n")
 
         buckets = list(bucket_avgs.keys())
-        buckets.sort()
+        buckets.sort()  # sorts strings like "1-10", "11-25", etc.
 
         for bucket in buckets:
             avg = bucket_avgs[bucket]
