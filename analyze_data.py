@@ -1,3 +1,4 @@
+# analyze_data.py
 import sqlite3
 import matplotlib.pyplot as plt
 
@@ -10,112 +11,131 @@ def get_connection():
     return conn, cur
 
 
-def get_top_100_genius_artists(cur):
+def get_lastfm_top_artists(cur):
     """
     Get up to 100 artists ordered by rank.
     """
     cur.execute("""
-        SELECT artist_name, rank
-        FROM GeniusArtists
+        SELECT artist_name, listeners, playcount, rank
+        FROM LastfmTopArtists
         ORDER BY rank ASC
         LIMIT 100
     """)
     rows = cur.fetchall()
-    return rows  # list of (artist_name, rank)
+    return rows  # list of (artist_name, listeners, playcount, rank)
 
 
-def compute_first_letter_distribution(rows):
+def get_bucket_label(rank):
     """
-    rows: list of (artist_name, rank)
-    returns: (counts_dict, total_count)
-      counts_dict: {letter: count}
-      total_count: total number of artists counted
+    Return a string label for the rank bucket.
     """
+    if rank >= 1 and rank <= 10:
+        return "1-10"
+    elif rank >= 11 and rank <= 25:
+        return "11-25"
+    elif rank >= 26 and rank <= 50:
+        return "26-50"
+    else:
+        return "51-100"
+
+
+def compute_avg_plays_per_listener_by_bucket(rows):
+    """
+    rows: list of (artist_name, listeners, playcount, rank)
+
+    Returns:
+      bucket_avgs: dict {bucket_label: average_ratio}
+      bucket_counts: dict {bucket_label: number_of_artists}
+    """
+    sum_ratios = {}
     counts = {}
-    total = 0
 
     for row in rows:
         artist_name = row[0]
+        listeners = row[1]
+        playcount = row[2]
+        rank = row[3]
 
-        if artist_name is None:
+        # Avoid division by zero
+        if listeners == 0:
             continue
 
-        name_stripped = artist_name.strip()
-        if len(name_stripped) == 0:
-            continue
+        ratio = float(playcount) / float(listeners)
+        bucket = get_bucket_label(rank)
 
-        first_char = name_stripped[0].upper()
-
-        # Only count A-Z
-        if first_char < "A" or first_char > "Z":
-            continue
-
-        if first_char in counts:
-            counts[first_char] = counts[first_char] + 1
+        if bucket in sum_ratios:
+            sum_ratios[bucket] = sum_ratios[bucket] + ratio
+            counts[bucket] = counts[bucket] + 1
         else:
-            counts[first_char] = 1
+            sum_ratios[bucket] = ratio
+            counts[bucket] = 1
 
-        total = total + 1
+    bucket_avgs = {}
+    for bucket in sum_ratios:
+        total_ratio = sum_ratios[bucket]
+        count = counts[bucket]
+        if count > 0:
+            avg = total_ratio / float(count)
+        else:
+            avg = 0.0
+        bucket_avgs[bucket] = avg
 
-    return counts, total
+    return bucket_avgs, counts
 
 
-def write_first_letter_results_to_file(counts, total,
-                                       filename="genius_first_letter_results.txt"):
+def write_bucket_results_to_file(bucket_avgs, bucket_counts,
+                                 filename="lastfm_bucket_results.txt"):
     """
-    Write the first-letter frequency distribution to a text file.
+    Write the average plays per listener by bucket to a text file.
     """
     with open(filename, "w") as f:
-        f.write("Genius Top Artists — First Letter Frequency Distribution\n\n")
-        f.write("Total artists counted: " + str(total) + "\n\n")
-        f.write("Letter\tCount\tPercentage\n")
+        f.write("Last.fm Top 100 Artists — Plays per Listener by Rank Bucket\n\n")
+        f.write("Bucket\tArtists\tAvg Plays per Listener\n")
 
-        letters = list(counts.keys())
-        letters.sort()
+        buckets = list(bucket_avgs.keys())
+        buckets.sort()
 
-        for letter in letters:
-            count = counts[letter]
-            if total > 0:
-                pct = float(count) / float(total)
-            else:
-                pct = 0.0
-            line = (letter + "\t" +
+        for bucket in buckets:
+            avg = bucket_avgs[bucket]
+            count = bucket_counts[bucket]
+            line = (bucket + "\t" +
                     str(count) + "\t" +
-                    "{0:.3f}".format(pct) + "\n")
+                    "{0:.3f}".format(avg) + "\n")
             f.write(line)
 
 
-def plot_first_letter_bar_chart(counts):
+def plot_bucket_bar_chart(bucket_avgs):
     """
-    Bar chart: x = first letter, y = count.
+    Bar chart: x = bucket label, y = average plays per listener.
     """
-    letters = list(counts.keys())
-    letters.sort()
+    buckets = list(bucket_avgs.keys())
+    buckets.sort()
+
     values = []
-    for letter in letters:
-        values.append(counts[letter])
+    for bucket in buckets:
+        values.append(bucket_avgs[bucket])
 
     plt.figure()
-    plt.bar(letters, values)
-    plt.title("Genius Top 100 Artists: First-Letter Frequency")
-    plt.xlabel("First letter of artist name")
-    plt.ylabel("Number of artists")
+    plt.bar(buckets, values)
+    plt.title("Last.fm Top 100 Artists:\nAverage Plays per Listener by Rank Bucket")
+    plt.xlabel("Rank bucket")
+    plt.ylabel("Average plays per listener")
     plt.tight_layout()
-    plt.savefig("genius_first_letter_distribution.png")
+    plt.savefig("lastfm_bucket_plays_per_listener.png")
     plt.close()
 
 
 def main():
     conn, cur = get_connection()
 
-    rows = get_top_100_genius_artists(cur)
-    counts, total = compute_first_letter_distribution(rows)
+    rows = get_lastfm_top_artists(cur)
+    bucket_avgs, bucket_counts = compute_avg_plays_per_listener_by_bucket(rows)
 
-    write_first_letter_results_to_file(counts, total)
-    plot_first_letter_bar_chart(counts)
+    write_bucket_results_to_file(bucket_avgs, bucket_counts)
+    plot_bucket_bar_chart(bucket_avgs)
 
     conn.close()
-    print("Genius first-letter analysis complete.")
+    print("Last.fm analysis complete.")
 
 
 if __name__ == "__main__":
