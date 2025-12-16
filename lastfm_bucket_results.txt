@@ -1,0 +1,7 @@
+ Last.fm Top 100 Artists � Plays per Listener by Rank Bucket
+
+Bucket	Artists	Avg Plays per Listener
+1-10	10	232.592
+11-25	15	128.122
+26-50	25	122.712
+51-100	50	83.701
