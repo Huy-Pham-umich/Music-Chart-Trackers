@@ -1,0 +1,12 @@
+Genre Percentages:
+=================
+Genre: Unknown, Count: 74, Percentage: 74.0%
+Genre: christmas, Count: 1, Percentage: 1.0%
+Genre: edm, Count: 3, Percentage: 3.0%
+Genre: folk pop, Count: 1, Percentage: 1.0%
+Genre: french house, Count: 1, Percentage: 1.0%
+Genre: melodic rap, Count: 1, Percentage: 1.0%
+Genre: pop, Count: 9, Percentage: 9.0%
+Genre: r&b, Count: 1, Percentage: 1.0%
+Genre: soft pop, Count: 8, Percentage: 8.0%
+Genre: trap, Count: 1, Percentage: 1.0%
